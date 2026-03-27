@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -51,16 +51,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navbar />
-
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md"
-        >
-          <div className="glow-border rounded-2xl bg-gray-900/50 backdrop-blur-sm p-8">
+    <div className="glow-border rounded-2xl bg-gray-900/50 backdrop-blur-sm p-8">
             {/* Header */}
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
@@ -170,7 +161,24 @@ export default function LoginPage() {
                 Create an Account
               </Button>
             </Link>
-          </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Navbar />
+
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          <Suspense fallback={<div className="glow-border rounded-2xl bg-gray-900/50 backdrop-blur-sm p-8 h-96" />}>
+            <LoginForm />
+          </Suspense>
         </motion.div>
       </main>
 
