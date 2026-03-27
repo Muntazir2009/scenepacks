@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+
+    if (!session || session.user?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // Get dashboard stats
     const [
       totalScenepacks,
@@ -12,6 +20,8 @@ export async function GET() {
       pendingApprovals,
       recentScenepacks,
       recentUsers,
+      recentApprovedScenepacks,
+      categoryStats,
     ] = await Promise.all([
       db.scenepack.count(),
       db.user.count(),
@@ -36,6 +46,24 @@ export async function GET() {
           role: true,
           createdAt: true,
         },
+      }),
+      // Get 5 most recent approved scenepacks
+      db.scenepack.findMany({
+        where: { status: "approved" },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+          createdBy: { select: { name: true } },
+        },
+      }),
+      // Get scenepacks count by category
+      db.scenepack.groupBy({
+        by: ["category"],
+        _count: { id: true },
+        orderBy: { _count: { id: "desc" } },
       }),
     ]);
 
@@ -62,6 +90,16 @@ export async function GET() {
         email: user.email,
         role: user.role,
         createdAt: user.createdAt,
+      })),
+      recentApprovedScenepacks: recentApprovedScenepacks.map((sp) => ({
+        id: sp.id,
+        title: sp.title,
+        createdAt: sp.createdAt,
+        uploader: sp.createdBy.name || "Unknown",
+      })),
+      categoryStats: categoryStats.map((cat) => ({
+        category: cat.category,
+        count: cat._count.id,
       })),
     });
   } catch (error) {
