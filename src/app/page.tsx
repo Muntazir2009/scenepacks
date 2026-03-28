@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
-import { ArrowRight, Download, Eye, TrendingUp, Package, Loader2 } from "lucide-react";
-import LoadingScreen from "@/components/ui-custom/LoadingScreen";
+import { useState, useEffect, useRef } from "react";
+import { motion, useMotionValue, useSpring, useTransform, animate, useInView } from "framer-motion";
+import { ArrowRight, Film, TrendingUp, Package, Users, ChevronRight } from "lucide-react";
+import useEmblaCarousel from "embla-carousel-react";
+import Autoplay from "embla-carousel-autoplay";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import ScenepackCard from "@/components/scenepack/ScenepackCard";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
 interface Scenepack {
@@ -16,12 +16,14 @@ interface Scenepack {
   title: string;
   description?: string;
   category: string;
-  quality: string;
-  tags: string[];
+  quality?: string;
+  tags?: string[];
   views: number;
   downloads: number;
   thumbnailUrl?: string;
-  createdAt: string;
+  previewUrl?: string;
+  featured?: boolean;
+  createdAt?: string;
   createdBy?: { name: string };
 }
 
@@ -33,288 +35,574 @@ interface HomeData {
     scenepacks: number;
     downloads: number;
     users: number;
+    pending?: number;
   };
   categories: Record<string, number>;
 }
 
-export default function Home() {
-  // Check if we've already loaded in this session
-  const [isLoading, setIsLoading] = useState(() => {
-    if (typeof window !== "undefined") {
-      return !sessionStorage.getItem("mythiceditz17_loaded");
+// Animation variants - fade up with 40px offset, 0.4s duration, easeOut
+const fadeUpVariants = {
+  hidden: { opacity: 0, y: 40 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: { duration: 0.4, ease: "easeOut" }
+  }
+};
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.1
     }
-    return true;
-  });
-  const [data, setData] = useState<HomeData | null>(null);
+  }
+};
+
+// Animated Counter with useMotionValue + useSpring
+function AnimatedCounter({ 
+  target, 
+  suffix = "" 
+}: { 
+  target: number; 
+  suffix?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const motionValue = useMotionValue(0);
+  const spring = useSpring(motionValue, { damping: 30, stiffness: 50 });
+  const rounded = useTransform(spring, (latest) => Math.round(latest).toLocaleString());
+  const [displayValue, setDisplayValue] = useState("0");
 
   useEffect(() => {
-    if (!isLoading) {
-      // Fetch home data
-      fetch("/api/home")
-        .then((res) => res.json())
-        .then((data) => setData(data))
-        .catch(console.error);
+    if (isInView && target > 0) {
+      animate(motionValue, target, { duration: 2 });
     }
-  }, [isLoading]);
+  }, [isInView, target, motionValue]);
 
-  const handleLoadingComplete = useCallback(() => {
-    setIsLoading(false);
-    sessionStorage.setItem("mythiceditz17_loaded", "true");
-  }, []);
+  useEffect(() => {
+    const unsubscribe = rounded.on("change", (latest) => {
+      setDisplayValue(latest);
+    });
+    return unsubscribe;
+  }, [rounded]);
 
   return (
-    <>
-      {isLoading && <LoadingScreen onComplete={handleLoadingComplete} />}
+    <span ref={ref} className="tabular-nums">
+      {displayValue}{suffix}
+    </span>
+  );
+}
 
-      <div className="min-h-screen flex flex-col bg-background">
-        <Navbar />
+// Skeleton Loader Component
+function SkeletonCard() {
+  return (
+    <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A0A0A] overflow-hidden">
+      <div className="aspect-video skeleton-shimmer" />
+      <div className="p-4 space-y-3">
+        <div className="h-5 w-3/4 rounded skeleton-shimmer" />
+        <div className="h-4 w-1/2 rounded skeleton-shimmer" />
+      </div>
+    </div>
+  );
+}
 
-        <main className="flex-1">
-          {/* Hero Section */}
-          <section className="relative overflow-hidden">
-            {/* Background effects */}
-            <div className="absolute inset-0">
-              <div className="absolute inset-0 bg-gradient-to-b from-red-950/20 via-transparent to-transparent" />
-              <div
-                className="absolute inset-0 opacity-10"
-                style={{
-                  backgroundImage: `radial-gradient(circle at 20% 50%, rgba(220, 38, 38, 0.3) 0%, transparent 50%),
-                                    radial-gradient(circle at 80% 50%, rgba(220, 38, 38, 0.2) 0%, transparent 50%)`,
-                }}
-              />
-            </div>
+// Hero Section with Video Background
+function HeroSection({ data }: { data: HomeData | null }) {
+  const featuredWithVideo = data?.featured.find(sp => sp.previewUrl);
+  
+  return (
+    <section className="relative min-h-[90vh] flex items-center overflow-hidden">
+      {/* Video Background */}
+      {featuredWithVideo?.previewUrl && (
+        <div className="absolute inset-0 z-0">
+          <video
+            src={featuredWithVideo.previewUrl}
+            className="w-full h-full object-cover"
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
+          {/* Dark Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-black/60" />
+        </div>
+      )}
+      
+      {/* Fallback gradient background */}
+      {!featuredWithVideo && (
+        <div className="absolute inset-0 z-0 bg-gradient-to-b from-black via-[#0A0A0A] to-black" />
+      )}
 
-            <div className="container mx-auto px-4 py-20 md:py-32 relative z-10">
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                className="text-center max-w-4xl mx-auto"
-              >
-                {/* Badge */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.2 }}
-                  className="mb-6"
+      {/* Content */}
+      <div className="container mx-auto px-4 py-20 relative z-10">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+          className="text-center max-w-4xl mx-auto"
+        >
+          {/* Main Heading - massive text-7xl md:text-8xl */}
+          <motion.h1 
+            variants={fadeUpVariants}
+            className="font-display text-7xl md:text-8xl font-bold tracking-tight leading-none mb-8"
+          >
+            <span className="text-white block">Premium</span>
+            <span className="text-[#E11D48] block mt-2">Scenepacks</span>
+          </motion.h1>
+
+          {/* CTA Buttons */}
+          <motion.div 
+            variants={fadeUpVariants}
+            className="flex flex-col sm:flex-row gap-4 justify-center mt-12"
+          >
+            <Link href="/browse">
+              <motion.div whileTap={{ scale: 0.97 }}>
+                <Button
+                  size="lg"
+                  className="bg-[#E11D48] hover:bg-[#E11D48]/90 text-white px-8 py-6 text-lg font-medium group"
                 >
-                  <Badge
-                    variant="outline"
-                    className="border-red-600/50 text-red-400 px-4 py-1 text-sm"
-                  >
-                    🎬 Premium Scenepack Platform
-                  </Badge>
-                </motion.div>
-
-                {/* Main heading */}
-                <motion.h1
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight"
-                >
-                  <span className="text-white">Elevate Your </span>
-                  <span className="gradient-text">Edits</span>
-                  <br />
-                  <span className="text-white">with Premium </span>
-                  <span className="text-red-500">Scenepacks</span>
-                </motion.h1>
-
-                {/* Description */}
-                <motion.p
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="text-gray-400 text-lg md:text-xl mb-8 max-w-2xl mx-auto"
-                >
-                  Browse, preview, and download high-quality scenepacks. 
-                  Twixtor-ready, 4K footage, and cinematic effects for your video edits.
-                </motion.p>
-
-                {/* CTA Buttons */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="flex flex-col sm:flex-row gap-4 justify-center"
-                >
-                  <Link href="/browse">
-                    <Button
-                      size="lg"
-                      className="bg-red-600 hover:bg-red-700 text-white px-8 py-6 text-lg group"
-                    >
-                      Browse Scenepacks
-                      <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                  </Link>
-                  <Link href="/upload">
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="border-red-600/50 text-red-400 hover:bg-red-600/10 hover:text-red-300 px-8 py-6 text-lg"
-                    >
-                      Upload Your Pack
-                    </Button>
-                  </Link>
-                </motion.div>
+                  Browse Packs
+                  <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                </Button>
               </motion.div>
+            </Link>
+            <Link href="/upload">
+              <motion.div whileTap={{ scale: 0.97 }}>
+                <Button
+                  size="lg"
+                  variant="ghost"
+                  className="border border-[rgba(255,255,255,0.1)] text-[#A1A1AA] hover:text-white hover:bg-white/5 px-8 py-6 text-lg"
+                >
+                  Upload
+                  <ChevronRight className="ml-1 h-5 w-5" />
+                </Button>
+              </motion.div>
+            </Link>
+          </motion.div>
+        </motion.div>
 
-              {/* Stats */}
+        {/* Stats Row */}
+        <motion.div 
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+          className="flex flex-wrap justify-center gap-8 md:gap-16 mt-20"
+        >
+          <motion.div variants={fadeUpVariants} className="text-center">
+            <div className="text-3xl md:text-4xl font-bold text-white">
+              <AnimatedCounter target={data?.stats?.scenepacks || 0} />
+            </div>
+            <div className="text-[#A1A1AA] text-sm mt-1 uppercase tracking-wider">Scenepacks</div>
+          </motion.div>
+          <motion.div variants={fadeUpVariants} className="text-center">
+            <div className="text-3xl md:text-4xl font-bold text-white">
+              <AnimatedCounter target={data?.stats?.downloads || 0} suffix="+" />
+            </div>
+            <div className="text-[#A1A1AA] text-sm mt-1 uppercase tracking-wider">Downloads</div>
+          </motion.div>
+          <motion.div variants={fadeUpVariants} className="text-center">
+            <div className="text-3xl md:text-4xl font-bold text-white">
+              <AnimatedCounter target={data?.stats?.users || 0} suffix="+" />
+            </div>
+            <div className="text-[#A1A1AA] text-sm mt-1 uppercase tracking-wider">Users</div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// Featured Carousel with Embla and Autoplay
+function FeaturedCarousel({ scenepacks }: { scenepacks: Scenepack[] }) {
+  const [emblaRef, emblaApi] = useEmblaCarousel(
+    { loop: true, align: "start", skipSnaps: false },
+    [Autoplay({ delay: 4000, stopOnInteraction: false })]
+  );
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [scrollSnaps, setScrollSnaps] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+
+    const onSelect = () => {
+      setSelectedIndex(emblaApi.selectedScrollSnap());
+    };
+
+    const timeoutId = setTimeout(() => {
+      setScrollSnaps(emblaApi.scrollSnapList());
+    }, 0);
+
+    emblaApi.on("select", onSelect);
+    emblaApi.on("reInit", onSelect);
+
+    return () => {
+      clearTimeout(timeoutId);
+      emblaApi.off("select", onSelect);
+      emblaApi.off("reInit", onSelect);
+    };
+  }, [emblaApi]);
+
+  if (!scenepacks.length) return null;
+
+  return (
+    <div className="relative">
+      <div className="overflow-hidden" ref={emblaRef}>
+        <div className="flex">
+          {scenepacks.map((scenepack) => (
+            <div
+              key={scenepack.id}
+              className="flex-[0_0_100%] min-w-0 md:flex-[0_0_50%] lg:flex-[0_0_33.333%] px-3"
+            >
+              <ScenepackCard scenepack={scenepack} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Dots */}
+      <div className="flex justify-center gap-2 mt-8">
+        {scrollSnaps.map((_, index) => (
+          <button
+            key={index}
+            onClick={() => emblaApi?.scrollTo(index)}
+            className={`h-2 rounded-full transition-all duration-300 ${
+              index === selectedIndex
+                ? "w-8 bg-[#E11D48]"
+                : "w-2 bg-[#27272a] hover:bg-[#3f3f46]"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Rank Badge Component
+function RankBadge({ rank }: { rank: number }) {
+  if (rank > 3) return null;
+  
+  const styles = {
+    1: "rank-gold",
+    2: "rank-silver",
+    3: "rank-bronze"
+  };
+
+  return (
+    <div className={`absolute -top-3 -left-3 z-20 w-10 h-10 rounded-full ${styles[rank as 1|2|3]} flex items-center justify-center font-bold text-lg shadow-lg`}>
+      #{rank}
+    </div>
+  );
+}
+
+// Trending Section with Rank Badges
+function TrendingSection({ scenepacks }: { scenepacks: Scenepack[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
+  return (
+    <section ref={ref} className="py-16 md:py-24">
+      <div className="container mx-auto px-4">
+        <motion.div
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+          variants={staggerContainer}
+        >
+          <motion.div variants={fadeUpVariants} className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="h-6 w-6 text-[#E11D48]" />
+              <h2 className="font-display text-2xl md:text-3xl font-bold text-white tracking-tight">
+                Trending This Week
+              </h2>
+            </div>
+            <Link href="/browse?sort=trending">
+              <Button variant="ghost" className="text-[#A1A1AA] hover:text-white hover:bg-white/5">
+                View All
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </motion.div>
+
+          {/* 3 column grid with rank badges on top 3 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {scenepacks.slice(0, 6).map((scenepack, index) => (
+              <motion.div
+                key={scenepack.id}
+                variants={fadeUpVariants}
+                className="relative pt-3 pl-3"
+              >
+                <RankBadge rank={index + 1} />
+                <ScenepackCard scenepack={scenepack} />
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// Latest Uploads Section - 4 column grid
+function LatestSection({ scenepacks }: { scenepacks: Scenepack[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
+  return (
+    <section ref={ref} className="py-16 md:py-24 bg-[#0A0A0A]">
+      <div className="container mx-auto px-4">
+        <motion.div
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+          variants={staggerContainer}
+        >
+          <motion.div variants={fadeUpVariants} className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <Package className="h-6 w-6 text-[#E11D48]" />
+              <h2 className="font-display text-2xl md:text-3xl font-bold text-white tracking-tight">
+                Latest Uploads
+              </h2>
+            </div>
+            <Link href="/browse">
+              <Button variant="ghost" className="text-[#A1A1AA] hover:text-white hover:bg-white/5">
+                View All
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </motion.div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {scenepacks.slice(0, 8).map((scenepack) => (
+              <motion.div
+                key={scenepack.id}
+                variants={fadeUpVariants}
+              >
+                <ScenepackCard scenepack={scenepack} />
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// Category Pill Component
+function CategoryPill({ category, count }: { category: string; count: number }) {
+  return (
+    <Link href={`/browse?category=${category.toLowerCase()}`}>
+      <motion.div
+        whileTap={{ scale: 0.97 }}
+        className="group px-6 py-4 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A0A0A] hover:border-[#E11D48]/30 hover:bg-[#E11D48]/5 transition-all cursor-pointer"
+      >
+        <div className="font-medium text-white group-hover:text-[#E11D48] transition-colors">
+          {category}
+        </div>
+        <div className="text-sm text-[#A1A1AA] mt-1">
+          {count} {count === 1 ? "pack" : "packs"}
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
+
+// Browse by Category Section
+function CategorySection({ categories }: { categories: Record<string, number> }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const categoryEntries = Object.entries(categories);
+
+  return (
+    <section ref={ref} className="py-16 md:py-24">
+      <div className="container mx-auto px-4">
+        <motion.div
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+          variants={staggerContainer}
+        >
+          <motion.div variants={fadeUpVariants} className="text-center mb-12">
+            <h2 className="font-display text-2xl md:text-3xl font-bold text-white tracking-tight mb-2">
+              Browse by Category
+            </h2>
+            <p className="text-[#A1A1AA]">Find scenepacks for your specific editing style</p>
+          </motion.div>
+
+          <motion.div 
+            variants={staggerContainer}
+            className="flex flex-wrap justify-center gap-4"
+          >
+            {categoryEntries.map(([category, count]) => (
+              <motion.div key={category} variants={fadeUpVariants}>
+                <CategoryPill category={category} count={count} />
+              </motion.div>
+            ))}
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// Join Community Banner - minimal with real user count
+function CommunityBanner({ userCount }: { userCount: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
+  return (
+    <section ref={ref} className="py-16 md:py-24 bg-[#0A0A0A] border-y border-[rgba(255,255,255,0.06)]">
+      <div className="container mx-auto px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="flex flex-col md:flex-row items-center justify-between gap-8"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-[#E11D48]/10 flex items-center justify-center">
+              <Users className="h-6 w-6 text-[#E11D48]" />
+            </div>
+            <div>
+              <h2 className="font-display text-xl md:text-2xl font-bold text-white tracking-tight">
+                Join the community
+              </h2>
+              <p className="text-[#A1A1AA]">
+                <AnimatedCounter target={userCount} />+ creators already sharing
+              </p>
+            </div>
+          </div>
+          <Link href="/upload">
+            <motion.div whileTap={{ scale: 0.97 }}>
+              <Button className="bg-[#E11D48] hover:bg-[#E11D48]/90 text-white px-8 group">
+                Start Uploading
+                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </motion.div>
+          </Link>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// Loading State with skeleton shimmer
+function LoadingState() {
+  return (
+    <div className="min-h-screen flex flex-col bg-black">
+      <Navbar user={null} />
+      <main className="flex-1">
+        <section className="min-h-[90vh] flex items-center">
+          <div className="container mx-auto px-4">
+            <div className="text-center mb-12">
+              <div className="h-24 w-3/4 mx-auto skeleton-shimmer rounded-xl mb-8" />
+              <div className="flex gap-4 justify-center">
+                <div className="h-14 w-40 skeleton-shimmer rounded-lg" />
+                <div className="h-14 w-32 skeleton-shimmer rounded-lg" />
+              </div>
+            </div>
+          </div>
+        </section>
+        <section className="py-16">
+          <div className="container mx-auto px-4">
+            <div className="h-8 w-48 skeleton-shimmer rounded mb-8" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
+          </div>
+        </section>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+export default function Home() {
+  const [data, setData] = useState<HomeData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/home")
+      .then((res) => res.json())
+      .then((data) => {
+        setData(data);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch home data:", error);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-black">
+      <Navbar user={null} />
+
+      <main className="flex-1">
+        {/* Hero Section */}
+        <HeroSection data={data} />
+
+        {/* Featured Section */}
+        <section className="py-16 md:py-24">
+          <div className="container mx-auto px-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="mb-12"
+            >
+              <div className="flex items-center gap-3">
+                <Film className="h-6 w-6 text-[#E11D48]" />
+                <h2 className="font-display text-2xl md:text-3xl font-bold text-white tracking-tight">
+                  Featured
+                </h2>
+              </div>
+            </motion.div>
+
+            {data?.featured && data.featured.length > 0 ? (
               <motion.div
                 initial={{ opacity: 0, y: 40 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7 }}
-                className="mt-16 grid grid-cols-3 gap-8 max-w-2xl mx-auto"
-              >
-                <div className="text-center">
-                  <div className="text-3xl md:text-4xl font-bold text-red-500">
-                    {data?.stats.scenepacks || 0}+
-                  </div>
-                  <div className="text-gray-400 text-sm mt-1">Scenepacks</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl md:text-4xl font-bold text-red-500">
-                    {data?.stats.downloads ? `${(data.stats.downloads / 1000).toFixed(0)}K+` : "0"}
-                  </div>
-                  <div className="text-gray-400 text-sm mt-1">Downloads</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl md:text-4xl font-bold text-red-500">
-                    {data?.stats.users ? `${(data.stats.users / 1000).toFixed(1)}K+` : "0"}
-                  </div>
-                  <div className="text-gray-400 text-sm mt-1">Users</div>
-                </div>
-              </motion.div>
-            </div>
-          </section>
-
-          {/* Trending Section */}
-          <section className="py-16 md:py-24 bg-gradient-to-b from-transparent via-red-950/5 to-transparent">
-            <div className="container mx-auto px-4">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                className="flex items-center justify-between mb-8"
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
               >
-                <div className="flex items-center gap-3">
-                  <TrendingUp className="h-6 w-6 text-red-500" />
-                  <h2 className="text-2xl md:text-3xl font-bold text-white">
-                    Trending Now
-                  </h2>
-                </div>
-                <Link href="/browse?sort=trending">
-                  <Button variant="ghost" className="text-red-400 hover:text-red-300">
-                    View All
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
+                <FeaturedCarousel scenepacks={data.featured} />
               </motion.div>
+            ) : (
+              <div className="text-center py-12 text-[#A1A1AA]">
+                No featured scenepacks yet.
+              </div>
+            )}
+          </div>
+        </section>
 
-              {data?.trending ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {data.trending.map((scenepack, index) => (
-                    <motion.div
-                      key={scenepack.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: index * 0.1 }}
-                    >
-                      <ScenepackCard scenepack={scenepack} />
-                    </motion.div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-red-500" />
-                </div>
-              )}
-            </div>
-          </section>
+        {/* Trending Section */}
+        {data?.trending && data.trending.length > 0 && (
+          <TrendingSection scenepacks={data.trending} />
+        )}
 
-          {/* Latest Section */}
-          <section className="py-16 md:py-24">
-            <div className="container mx-auto px-4">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                className="flex items-center justify-between mb-8"
-              >
-                <div className="flex items-center gap-3">
-                  <Package className="h-6 w-6 text-red-500" />
-                  <h2 className="text-2xl md:text-3xl font-bold text-white">
-                    Latest Uploads
-                  </h2>
-                </div>
-                <Link href="/browse">
-                  <Button variant="ghost" className="text-red-400 hover:text-red-300">
-                    View All
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </motion.div>
+        {/* Latest Uploads Section */}
+        {data?.latest && data.latest.length > 0 && (
+          <LatestSection scenepacks={data.latest} />
+        )}
 
-              {data?.latest ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {data.latest.map((scenepack, index) => (
-                    <motion.div
-                      key={scenepack.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <ScenepackCard scenepack={scenepack} />
-                    </motion.div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-red-500" />
-                </div>
-              )}
-            </div>
-          </section>
+        {/* Browse by Category Section */}
+        {data?.categories && Object.keys(data.categories).length > 0 && (
+          <CategorySection categories={data.categories} />
+        )}
 
-          {/* CTA Section */}
-          <section className="py-16 md:py-24">
-            <div className="container mx-auto px-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                className="relative rounded-2xl overflow-hidden"
-              >
-                {/* Background */}
-                <div className="absolute inset-0 bg-gradient-to-r from-red-950/50 via-red-900/30 to-red-950/50 border border-red-600/20" />
-                
-                <div className="relative z-10 p-8 md:p-16 text-center">
-                  <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-                    Ready to Upload Your Scenepacks?
-                  </h2>
-                  <p className="text-gray-400 text-lg mb-8 max-w-2xl mx-auto">
-                    Share your premium scenepacks with thousands of editors worldwide. 
-                    Get featured and grow your audience.
-                  </p>
-                  <Link href="/upload">
-                    <Button
-                      size="lg"
-                      className="bg-red-600 hover:bg-red-700 text-white px-8"
-                    >
-                      Start Uploading
-                      <ArrowRight className="ml-2 h-5 w-5" />
-                    </Button>
-                  </Link>
-                </div>
-              </motion.div>
-            </div>
-          </section>
-        </main>
+        {/* Community Banner */}
+        <CommunityBanner userCount={data?.stats?.users || 0} />
+      </main>
 
-        <Footer />
-      </div>
-    </>
+      <Footer />
+    </div>
   );
 }

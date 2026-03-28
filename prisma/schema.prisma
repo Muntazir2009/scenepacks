@@ -1,13 +1,14 @@
 // MythicEditz17 - Scenepack Platform Database Schema
-// SQLite for local development
+// PostgreSQL for Vercel/Neon deployment
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // User model - extends NextAuth
@@ -22,14 +23,15 @@ model User {
   banned        Boolean    @default(false)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
-
+  
   // Relations
   accounts      Account[]
   sessions      Session[]
   scenepacks    Scenepack[]
   likes         Like[]
   saves         Save[]
-
+  comments      Comment[]
+  
   @@map("users")
 }
 
@@ -40,13 +42,13 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String?
-  access_token      String?
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String?
-  session_state     String?
+  id_token          String? @db.Text
+  session_state     String? @db.Text
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -79,14 +81,14 @@ model VerificationToken {
 model Scenepack {
   id           String   @id @default(cuid())
   title        String
-  description  String?
+  description  String?  @db.Text
   thumbnailUrl String?
   previewUrl   String?
   driveLink    String?
   megaLink     String?
   category     String
   quality      String   @default("HD") // HD, FHD, 4K
-  tags         String // JSON string of tags array
+  tags         String   @db.Text // JSON string of tags array
   status       String   @default("pending") // pending, approved, rejected
   featured     Boolean  @default(false)
   views        Int      @default(0)
@@ -94,12 +96,13 @@ model Scenepack {
   createdById  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
+  
   // Relations
-  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy    User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
   likes        Like[]
   saves        Save[]
-
+  comments     Comment[]
+  
   @@index([category])
   @@index([status])
   @@index([featured])
@@ -112,11 +115,11 @@ model Like {
   userId      String
   scenepackId String
   createdAt   DateTime @default(now())
-
+  
   // Relations
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   scenepack   Scenepack @relation(fields: [scenepackId], references: [id], onDelete: Cascade)
-
+  
   @@unique([userId, scenepackId])
   @@index([scenepackId])
   @@map("likes")
@@ -138,13 +141,45 @@ model Save {
   @@map("saves")
 }
 
+// Comment system
+model Comment {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  userId      String
+  scenepackId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenepack   Scenepack @relation(fields: [scenepackId], references: [id], onDelete: Cascade)
+  
+  @@index([scenepackId])
+  @@index([userId])
+  @@map("comments")
+}
+
 // Platform Settings - Store admin-configurable settings
 model PlatformSettings {
-  id              String   @id @default(cuid())
-  requireApproval Boolean  @default(true)
-  allowMegaLinks  Boolean  @default(true)
-  maintenanceMode Boolean  @default(false)
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  requireApproval    Boolean  @default(true)
+  allowMegaLinks     Boolean  @default(true)
+  maintenanceMode    Boolean  @default(false)
+  announcementBanner String?  @db.Text
+  updatedAt          DateTime @updatedAt
 
   @@map("platform_settings")
+}
+
+// Activity Log - Track admin actions for real-time feed
+model ActivityLog {
+  id        String   @id @default(cuid())
+  action    String   // "upload", "approve", "reject", "signup", "ban", "comment", etc.
+  message   String   @db.Text
+  userId    String?  // User who performed the action
+  targetId  String?  // Target scenepack or user ID
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("activity_logs")
 }

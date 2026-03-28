@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Cinzel } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
-import AuthProvider from "@/components/providers/AuthProvider";
+import SessionProvider from "@/components/providers/SessionProvider";
+import { AnnouncementBanner } from "@/components/layout/AnnouncementBanner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 
 const inter = Inter({
   variable: "--font-geist-sans",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const cinzel = Cinzel({
+  variable: "--font-cinzel",
   subsets: ["latin"],
   display: "swap",
 });
@@ -39,14 +47,16 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className="dark">
       <body
-        className={`${inter.variable} font-sans antialiased bg-background text-foreground min-h-screen flex flex-col`}
+        className={`${inter.variable} ${cinzel.variable} font-sans antialiased bg-background text-foreground min-h-screen flex flex-col`}
       >
-        <AuthProvider>
-          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        <SessionProvider>
+          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={true}>
+            <LoadingScreen />
+            <AnnouncementBanner />
             {children}
             <Toaster position="bottom-right" />
           </ThemeProvider>
-        </AuthProvider>
+        </SessionProvider>
       </body>
     </html>
   );

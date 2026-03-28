@@ -1,16 +1,8 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session || session.user?.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     // Get dashboard stats
     const [
       totalScenepacks,
@@ -20,8 +12,7 @@ export async function GET() {
       pendingApprovals,
       recentScenepacks,
       recentUsers,
-      recentApprovedScenepacks,
-      categoryStats,
+      allScenepacks,
     ] = await Promise.all([
       db.scenepack.count(),
       db.user.count(),
@@ -47,25 +38,74 @@ export async function GET() {
           createdAt: true,
         },
       }),
-      // Get 5 most recent approved scenepacks
       db.scenepack.findMany({
-        where: { status: "approved" },
-        take: 5,
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
           title: true,
+          category: true,
+          quality: true,
+          status: true,
+          featured: true,
+          views: true,
+          downloads: true,
+          thumbnailUrl: true,
           createdAt: true,
-          createdBy: { select: { name: true } },
+          createdBy: { select: { name: true, email: true } },
         },
       }),
-      // Get scenepacks count by category
-      db.scenepack.groupBy({
-        by: ["category"],
-        _count: { id: true },
-        orderBy: { _count: { id: "desc" } },
-      }),
     ]);
+
+    // Get signups per day for last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    const usersLast30Days = await db.user.findMany({
+      where: {
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      select: { createdAt: true },
+    });
+
+    // Group users by day
+    const signupsPerDay: { date: string; count: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split("T")[0];
+      const count = usersLast30Days.filter((u) => {
+        const userDate = new Date(u.createdAt).toISOString().split("T")[0];
+        return userDate === dateStr;
+      }).length;
+      signupsPerDay.push({
+        date: dateStr,
+        count,
+      });
+    }
+
+    // Get category distribution
+    const categories = await db.scenepack.groupBy({
+      by: ["category"],
+      _count: { id: true },
+      where: { status: "approved" },
+    });
+
+    const categoryDistribution = categories.map((cat) => ({
+      name: cat.category,
+      value: cat._count.id,
+    }));
+
+    // Get newest user
+    const newestUser = await db.user.findFirst({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+      },
+    });
 
     return NextResponse.json({
       stats: {
@@ -91,16 +131,22 @@ export async function GET() {
         role: user.role,
         createdAt: user.createdAt,
       })),
-      recentApprovedScenepacks: recentApprovedScenepacks.map((sp) => ({
+      allScenepacks: allScenepacks.map((sp) => ({
         id: sp.id,
         title: sp.title,
+        category: sp.category,
+        quality: sp.quality,
+        status: sp.status,
+        featured: sp.featured,
+        views: sp.views,
+        downloads: sp.downloads,
+        thumbnailUrl: sp.thumbnailUrl,
         createdAt: sp.createdAt,
-        uploader: sp.createdBy.name || "Unknown",
+        uploader: sp.createdBy,
       })),
-      categoryStats: categoryStats.map((cat) => ({
-        category: cat.category,
-        count: cat._count.id,
-      })),
+      signupsPerDay,
+      categoryDistribution,
+      newestUser,
     });
   } catch (error) {
     console.error("Error fetching admin data:", error);

@@ -3,14 +3,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-
-    if (!session?.user || session.user.role !== "admin") {
+    if (!session || session.user?.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -18,12 +14,8 @@ export async function PATCH(
     const body = await request.json();
     const { role, banned } = body;
 
-    // Prevent admin from banning themselves or changing their own role
     if (id === session.user.id) {
-      return NextResponse.json(
-        { error: "Cannot modify your own account" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Cannot modify your own account" }, { status: 400 });
     }
 
     const updateData: { role?: string; banned?: boolean } = {};
@@ -40,38 +32,24 @@ export async function PATCH(
         role: true,
         banned: true,
         createdAt: true,
-        _count: {
-          select: { scenepacks: true },
-        },
+        _count: { select: { scenepacks: true } },
       },
     });
 
-    return NextResponse.json({
-      ...user,
-      scenepackCount: user._count.scenepacks,
-    });
-  } catch (error) {
-    console.error("Error updating user:", error);
-    return NextResponse.json(
-      { error: "Failed to update user" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ...user, scenepackCount: user._count.scenepacks });
+  } catch {
+    return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
   }
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-
-    if (!session?.user || session.user.role !== "admin") {
+    if (!session || session.user?.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;
-
     const user = await db.user.findUnique({
       where: { id },
       select: {
@@ -82,19 +60,11 @@ export async function GET(
         banned: true,
         createdAt: true,
         image: true,
-        _count: {
-          select: { scenepacks: true },
-        },
+        _count: { select: { scenepacks: true } },
         scenepacks: {
           take: 10,
           orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            category: true,
-            createdAt: true,
-          },
+          select: { id: true, title: true, status: true, views: true, downloads: true },
         },
       },
     });
@@ -103,15 +73,8 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    return NextResponse.json({
-      ...user,
-      scenepackCount: user._count.scenepacks,
-    });
-  } catch (error) {
-    console.error("Error fetching user:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch user" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ...user, scenepackCount: user._count.scenepacks });
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch user" }, { status: 500 });
   }
 }

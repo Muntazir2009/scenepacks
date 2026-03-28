@@ -1,3 +1,4 @@
+// TODO: Add rate limiting (e.g., 5 requests per minute for uploads)
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { db } from "@/lib/db";
@@ -36,6 +37,16 @@ export async function POST(request: Request) {
         email,
         password: hashedPassword,
         role: "user",
+      },
+    });
+
+    // Log activity
+    await db.activityLog.create({
+      data: {
+        action: "signup",
+        message: `New user registered: ${name}`,
+        userId: user.id,
+        targetId: user.id,
       },
     });
 

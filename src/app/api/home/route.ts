@@ -3,13 +3,13 @@ import { db } from "@/lib/db";
 
 export async function GET() {
   try {
-    // Get featured scenepacks
+    // Get featured scenepacks (first one for video background)
     const featured = await db.scenepack.findMany({
       where: {
         status: "approved",
         featured: true,
       },
-      take: 3,
+      take: 6,
       orderBy: { createdAt: "desc" },
       include: {
         createdBy: {
@@ -18,7 +18,7 @@ export async function GET() {
       },
     });
 
-    // Get trending (most views)
+    // Get trending (most views) - top 6 for trending section
     const trending = await db.scenepack.findMany({
       where: { status: "approved" },
       take: 6,
@@ -30,7 +30,7 @@ export async function GET() {
       },
     });
 
-    // Get latest
+    // Get latest uploads
     const latest = await db.scenepack.findMany({
       where: { status: "approved" },
       take: 8,
@@ -43,13 +43,12 @@ export async function GET() {
     });
 
     // Get stats
-    const [totalScenepacks, totalDownloads, totalUsers, pendingCount] = await Promise.all([
+    const [totalScenepacks, totalDownloads, totalUsers] = await Promise.all([
       db.scenepack.count({ where: { status: "approved" } }),
       db.scenepack.aggregate({
         _sum: { downloads: true },
       }),
       db.user.count(),
-      db.scenepack.count({ where: { status: "pending" } }),
     ]);
 
     // Get categories with counts
@@ -77,23 +76,29 @@ export async function GET() {
       views: sp.views,
       downloads: sp.downloads,
       thumbnailUrl: sp.thumbnailUrl,
+      previewUrl: sp.previewUrl,
+      featured: sp.featured,
       driveLink: sp.driveLink,
       megaLink: sp.megaLink,
       createdAt: sp.createdAt,
       createdBy: sp.createdBy,
     });
 
-    return NextResponse.json({
+    const data = {
       featured: featured.map(formatScenepack),
       trending: trending.map(formatScenepack),
       latest: latest.map(formatScenepack),
       stats: {
-        scenepacks: totalScenepacks,
-        downloads: totalDownloads._sum.downloads || 0,
-        users: totalUsers,
-        pending: pendingCount,
+        totalPacks: totalScenepacks,
+        totalDownloads: totalDownloads._sum.downloads || 0,
+        totalUsers: totalUsers,
+        categoryCount: Object.keys(categoryCounts).length,
       },
       categories: categoryCounts,
+    };
+
+    return NextResponse.json(data, {
+      headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=30' }
     });
   } catch (error) {
     console.error("Error fetching home data:", error);

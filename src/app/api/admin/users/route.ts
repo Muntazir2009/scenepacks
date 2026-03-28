@@ -12,18 +12,17 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "20");
     const search = searchParams.get("search") || "";
 
     const skip = (page - 1) * limit;
 
-    // SQLite uses case-insensitive LIKE by default, so we don't need mode
     const where = search
       ? {
           OR: [
-            { name: { contains: search } },
-            { email: { contains: search } },
+            { name: { contains: search, mode: "insensitive" as const } },
+            { email: { contains: search, mode: "insensitive" as const } },
           ],
         }
       : {};
@@ -41,14 +40,34 @@ export async function GET(request: Request) {
           role: true,
           banned: true,
           createdAt: true,
+          updatedAt: true,
           image: true,
-          _count: {
-            select: { scenepacks: true },
-          },
+          _count: { select: { scenepacks: true } },
         },
       }),
       db.user.count({ where }),
     ]);
+
+    // Get last activity for each user from ActivityLog
+    const userIds = users.map(u => u.id);
+    const recentActivities = await db.activityLog.findMany({
+      where: {
+        userId: { in: userIds },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        userId: true,
+        createdAt: true,
+      },
+    });
+
+    // Create a map of userId to last activity
+    const lastActivityMap = new Map<string, Date>();
+    for (const activity of recentActivities) {
+      if (activity.userId && !lastActivityMap.has(activity.userId)) {
+        lastActivityMap.set(activity.userId, activity.createdAt);
+      }
+    }
 
     return NextResponse.json({
       users: users.map((user) => ({
@@ -58,18 +77,14 @@ export async function GET(request: Request) {
         role: user.role,
         banned: user.banned,
         createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
         image: user.image,
         scenepackCount: user._count.scenepacks,
+        lastActivity: lastActivityMap.get(user.id)?.toISOString() || null,
       })),
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
-  } catch (error) {
-    console.error("Error fetching users:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch users" },
-      { status: 500 }
-    );
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
   }
 }
