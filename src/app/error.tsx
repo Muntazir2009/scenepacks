@@ -14,20 +14,19 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log the error to an error reporting service
     console.error(error);
   }, [error]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background dark:bg-black px-4">
+    <div className="min-h-screen flex items-center justify-center bg-black px-4">
       <div className="text-center max-w-md">
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3 }}
         >
-          <div className="w-20 h-20 rounded-full bg-[#E11D48]/10 flex items-center justify-center mx-auto mb-6">
-            <AlertTriangle className="w-10 h-10 text-[#E11D48]" />
+          <div className="w-20 h-20 rounded-full bg-[#EF4444]/10 flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="w-10 h-10 text-[#EF4444]" />
           </div>
         </motion.div>
 
@@ -36,14 +35,14 @@ export default function Error({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <h2 className="text-2xl font-bold text-foreground dark:text-white mb-2">
+          <h2 className="text-2xl font-bold text-white mb-2">
             Something went wrong
           </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 mb-2">
-            An unexpected error occurred while loading this page.
+          <p className="text-zinc-500 mb-6">
+            An unexpected error occurred. Please try again.
           </p>
           {error.digest && (
-            <p className="text-xs text-zinc-600 dark:text-zinc-500 font-mono mb-6">
+            <p className="text-xs text-zinc-600 font-mono mb-6">
               Error ID: {error.digest}
             </p>
           )}
@@ -57,7 +56,7 @@ export default function Error({
         >
           <Button
             onClick={reset}
-            className="bg-[#E11D48] hover:bg-[#BE123C] text-white gap-2"
+            className="bg-[#EF4444] hover:bg-[#DC2626] text-white gap-2 rounded-full px-6"
           >
             <RefreshCw className="w-4 h-4" />
             Try Again
@@ -65,7 +64,7 @@ export default function Error({
           <Link href="/">
             <Button
               variant="outline"
-              className="border-black/20 dark:border-white/20 text-foreground dark:text-white hover:bg-black/5 dark:hover:bg-white/5 gap-2"
+              className="border-white/10 text-white hover:bg-white/5 gap-2 rounded-full px-6"
             >
               <Home className="w-4 h-4" />
               Go Home

@@ -2,28 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import Image from "next/image";
-import {
-  Search,
-  Grid3X3,
-  List,
-  ChevronDown,
-  X,
-  Download,
-  Eye,
-  Heart,
-  Sparkles,
-  LayoutGrid,
-  AlignJustify,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Search, X, SlidersHorizontal, ChevronDown, Sparkles, Grid3X3 } from "lucide-react";
+import { motion } from "framer-motion";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-import ScenepackCard, { ScenepackCardSkeleton, Scenepack } from "@/components/scenepack/ScenepackCard";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -31,560 +15,338 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 
-// Categories list
-const CATEGORIES = [
-  { name: "All", value: "all" },
-  { name: "Anime", value: "anime" },
-  { name: "Gaming", value: "gaming" },
-  { name: "Movies", value: "movies" },
-  { name: "Music", value: "music" },
-  { name: "VFX", value: "vfx" },
-  { name: "Sports", value: "sports" },
-  { name: "Nature", value: "nature" },
-  { name: "Abstract", value: "abstract" },
+const CATEGORIES = ["All", "Anime", "Gaming", "Movies", "Music", "VFX", "Sports", "Nature"];
+const QUALITIES = ["All", "HD", "FHD", "4K"];
+const SORTS = [
+  { label: "Latest", value: "latest" },
+  { label: "Most Downloaded", value: "downloads" },
+  { label: "Most Viewed", value: "views" },
 ];
 
-// Quality options
-const QUALITY_OPTIONS = [
-  { name: "All Qualities", value: "all" },
-  { name: "HD", value: "HD" },
-  { name: "FHD", value: "FHD" },
-  { name: "4K", value: "4K" },
-];
-
-// Sort options
-const SORT_OPTIONS = [
-  { name: "Latest", value: "latest" },
-  { name: "Most Downloaded", value: "downloads" },
-  { name: "Most Viewed", value: "views" },
-  { name: "Most Liked", value: "likes" },
-];
-
-type ViewMode = "grid" | "list";
-
-// Extended Scenepack type for list view
-interface ExtendedScenepack extends Scenepack {
-  description?: string;
-  tags?: string[];
-  createdAt?: string;
+interface Scenepack {
+  id: string;
+  title: string;
+  thumbnailUrl?: string;
+  category: string;
+  quality?: string;
+  views: number;
+  downloads: number;
 }
 
-function BrowseContent() {
+function PackCard({ pack }: { pack: Scenepack }) {
+  return (
+    <Link
+      href={`/scenepack/${pack.id}`}
+      className="group"
+    >
+      <div className="relative aspect-video rounded-xl overflow-hidden bg-zinc-900">
+        {pack.thumbnailUrl ? (
+          <img
+            src={pack.thumbnailUrl}
+            alt={pack.title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-xl font-bold text-zinc-700">ME17</span>
+          </div>
+        )}
+
+        {/* Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+        {/* Quality */}
+        {pack.quality && (
+          <span className="absolute top-2 left-2 px-2 py-0.5 text-[11px] font-medium bg-black/60 backdrop-blur-sm rounded text-white">
+            {pack.quality}
+          </span>
+        )}
+
+        {/* Info */}
+        <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-2 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300">
+          <h3 className="font-semibold text-white text-sm line-clamp-1">{pack.title}</h3>
+          <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400">
+            <span>{pack.category}</span>
+            <span>•</span>
+            <span>{pack.downloads.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function PackCardSkeleton() {
+  return (
+    <div className="aspect-video rounded-xl skeleton" />
+  );
+}
+
+function BrowsePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
 
-  // State management - initialized from URL params
   const [search, setSearch] = useState(searchParams.get("search") || "");
-  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get("search") || "");
-  const [category, setCategory] = useState(searchParams.get("category") || "all");
-  const [quality, setQuality] = useState(searchParams.get("quality") || "all");
+  const [category, setCategory] = useState(searchParams.get("category") || "All");
+  const [quality, setQuality] = useState(searchParams.get("quality") || "All");
   const [sort, setSort] = useState(searchParams.get("sort") || "latest");
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [scenepacks, setScenepacks] = useState<ExtendedScenepack[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [packs, setPacks] = useState<Scenepack[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
-  const [isFilterSticky, setIsFilterSticky] = useState(false);
 
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const filterBarRef = useRef<HTMLDivElement>(null);
+  const loadRef = useRef<HTMLDivElement | null>(null);
+  const LIMIT = 20;
 
-  const LIMIT = 12;
-
-  // Load view preference from localStorage
-  useEffect(() => {
-    const savedViewMode = localStorage.getItem("browse-view-mode") as ViewMode;
-    if (savedViewMode && (savedViewMode === "grid" || savedViewMode === "list")) {
-      setViewMode(savedViewMode);
-    }
-  }, []);
-
-  // Update URL params when filters change
-  const updateUrlParams = useCallback(
-    (newParams: Record<string, string>) => {
-      const params = new URLSearchParams(searchParams.toString());
-
-      Object.entries(newParams).forEach(([key, value]) => {
-        if (value && value !== "all" && value !== "") {
-          params.set(key, value);
-        } else {
-          params.delete(key);
-        }
+  const updateUrl = useCallback(
+    (params: Record<string, string>) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      Object.entries(params).forEach(([k, v]) => {
+        if (v && v !== "All") sp.set(k, v);
+        else sp.delete(k);
       });
-
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
     },
     [searchParams, router, pathname]
   );
 
-  // Handle search change
-  const handleSearchChange = useCallback(
-    (value: string) => {
-      setSearch(value);
-      updateUrlParams({ search: value, category, quality, sort });
-    },
-    [category, quality, sort, updateUrlParams]
-  );
-
-  // Handle category change
-  const handleCategoryChange = useCallback(
-    (value: string) => {
-      setCategory(value);
-      setPage(0);
-      updateUrlParams({ search, category: value, quality, sort });
-    },
-    [search, quality, sort, updateUrlParams]
-  );
-
-  // Handle quality change
-  const handleQualityChange = useCallback(
-    (value: string) => {
-      setQuality(value);
-      setPage(0);
-      updateUrlParams({ search, category, quality: value, sort });
-    },
-    [search, category, sort, updateUrlParams]
-  );
-
-  // Handle sort change
-  const handleSortChange = useCallback(
-    (value: string) => {
-      setSort(value);
-      setPage(0);
-      updateUrlParams({ search, category, quality, sort: value });
-    },
-    [search, category, quality, updateUrlParams]
-  );
-
-  // Handle view mode change
-  const handleViewModeChange = useCallback((mode: ViewMode) => {
-    setViewMode(mode);
-    localStorage.setItem("browse-view-mode", mode);
-  }, []);
-
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  // Fetch scenepacks
-  const fetchScenepacks = useCallback(
+  const fetchPacks = useCallback(
     async (offset: number, append = false) => {
       try {
-        if (offset === 0) {
-          setIsLoading(true);
-        } else {
-          setIsLoadingMore(true);
-        }
+        if (offset === 0) setLoading(true);
+        else setLoadingMore(true);
 
         const params = new URLSearchParams();
-        if (category !== "all") params.append("category", category);
-        if (quality !== "all") params.append("quality", quality);
-        if (debouncedSearch) params.append("search", debouncedSearch);
-        params.append("sort", sort === "likes" ? "trending" : sort);
-        params.append("limit", LIMIT.toString());
-        params.append("offset", offset.toString());
+        if (category !== "All") params.set("category", category);
+        if (quality !== "All") params.set("quality", quality);
+        if (search) params.set("search", search);
+        params.set("sort", sort);
+        params.set("limit", LIMIT.toString());
+        params.set("offset", offset.toString());
 
-        const response = await fetch(`/api/scenepacks?${params}`);
-        const data = await response.json();
+        const res = await fetch(`/api/scenepacks?${params}`);
+        const data = await res.json();
 
-        if (append) {
-          setScenepacks((prev) => [...prev, ...data.scenepacks]);
-        } else {
-          setScenepacks(data.scenepacks);
-        }
-        setTotal(data.total);
-        setHasMore(data.hasMore);
-      } catch (error) {
-        console.error("Error fetching scenepacks:", error);
+        if (append) setPacks((p) => [...p, ...data.scenepacks]);
+        else setPacks(data.scenepacks || []);
+        setTotal(data.total || 0);
+        setHasMore(data.hasMore ?? false);
+      } catch {
+        console.error("Failed to fetch");
       } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
+        setLoading(false);
+        setLoadingMore(false);
       }
     },
-    [category, quality, debouncedSearch, sort]
+    [category, quality, search, sort]
   );
 
-  // Initial fetch and when filters change
   useEffect(() => {
-    setPage(0);
-    fetchScenepacks(0, false);
-  }, [category, quality, sort, debouncedSearch, fetchScenepacks]);
+    const t = setTimeout(() => {
+      setPage(0);
+      fetchPacks(0);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [search, category, quality, sort, fetchPacks]);
 
-  // Infinite scroll observer
   useEffect(() => {
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
-          const nextPage = page + 1;
-          setPage(nextPage);
-          fetchScenepacks(nextPage * LIMIT, true);
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          const next = page + 1;
+          setPage(next);
+          fetchPacks(next * LIMIT, true);
         }
       },
       { threshold: 0.1, rootMargin: "200px" }
     );
+    if (loadRef.current) observerRef.current.observe(loadRef.current);
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, loadingMore, page, fetchPacks]);
 
-    if (loadMoreRef.current) {
-      observerRef.current.observe(loadMoreRef.current);
-    }
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [hasMore, isLoadingMore, page, fetchScenepacks]);
-
-  // Sticky filter bar detection
-  useEffect(() => {
-    const handleScroll = () => {
-      if (filterBarRef.current) {
-        const rect = filterBarRef.current.getBoundingClientRect();
-        setIsFilterSticky(rect.top <= 64);
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Get active filters for display
-  const activeFilters = [];
-  if (category !== "all") {
-    activeFilters.push({ key: "category", label: CATEGORIES.find((c) => c.value === category)?.name || category });
-  }
-  if (quality !== "all") {
-    activeFilters.push({ key: "quality", label: quality });
-  }
-  if (search) {
-    activeFilters.push({ key: "search", label: `"${search}"` });
-  }
-
-  // Remove filter
-  const removeFilter = (key: string) => {
-    switch (key) {
-      case "category":
-        handleCategoryChange("all");
-        break;
-      case "quality":
-        handleQualityChange("all");
-        break;
-      case "search":
-        setSearch("");
-        handleSearchChange("");
-        break;
-    }
-  };
-
-  // Clear all filters
-  const clearAllFilters = () => {
+  const clearFilters = () => {
     setSearch("");
-    setCategory("all");
-    setQuality("all");
-    updateUrlParams({});
-    setPage(0);
-    fetchScenepacks(0, false);
+    setCategory("All");
+    setQuality("All");
+    updateUrl({});
   };
+
+  const hasFilters = search || category !== "All" || quality !== "All";
 
   return (
-    <div className="min-h-screen flex flex-col bg-black">
-      <Navbar user={null} />
+    <div className="min-h-screen bg-black text-white flex flex-col">
+      <Navbar />
 
-      <main className="flex-1 pt-16">
-        {/* Page Header */}
-        <section className="py-8 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
-              Browse{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-pink-500">
-                Scenepacks
-              </span>
-            </h1>
-            <p className="text-zinc-400">
-              Discover premium scenepacks for your video edits
-            </p>
-          </div>
-        </section>
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl sm:text-4xl font-bold text-white">Browse</h1>
+          <p className="text-zinc-500 mt-2">Discover scenepacks for your next edit</p>
+        </div>
 
-        {/* Sticky Filter Bar */}
-        <div
-          ref={filterBarRef}
-          className={cn(
-            "sticky top-16 z-40 transition-all duration-300",
-            isFilterSticky
-              ? "bg-black/80 backdrop-blur-xl border-b border-white/[0.06] shadow-lg shadow-black/20"
-              : "bg-transparent"
-          )}
-        >
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            {/* Main Filter Row */}
-            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center">
-              {/* Search */}
-              <div className="relative flex-1 w-full lg:max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-                <Input
-                  type="text"
-                  placeholder="Search scenepacks..."
-                  value={search}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#0A0A0A] border border-white/[0.06] rounded-lg text-white placeholder:text-zinc-500 focus:border-rose-500/50 focus:ring-rose-500/20 transition-all"
-                />
-                {search && (
-                  <button
-                    onClick={() => handleSearchChange("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-
-              {/* Category Pills - Horizontal Scroll */}
-              <div className="flex-1 w-full lg:flex-none overflow-x-auto scrollbar-hide -mx-4 px-4 lg:mx-0 lg:px-0">
-                <div className="flex items-center gap-2 min-w-max">
-                  {CATEGORIES.map((cat) => {
-                    const isActive = category === cat.value;
-                    return (
-                      <button
-                        key={cat.value}
-                        onClick={() => handleCategoryChange(cat.value)}
-                        className={cn(
-                          "px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
-                          isActive
-                            ? "bg-rose-600 text-white shadow-lg shadow-rose-600/30"
-                            : "bg-[#0A0A0A] border border-white/[0.06] text-zinc-400 hover:text-white hover:border-white/10"
-                        )}
-                      >
-                        {cat.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Quality, Sort, and View Toggle */}
-              <div className="flex items-center gap-3 w-full lg:w-auto">
-                {/* Quality Radio Pills */}
-                <div className="flex items-center gap-1 p-1 bg-[#0A0A0A] border border-white/[0.06] rounded-lg">
-                  {QUALITY_OPTIONS.slice(1).map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => handleQualityChange(quality === opt.value ? "all" : opt.value)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200",
-                        quality === opt.value
-                          ? "bg-rose-600/20 text-rose-400"
-                          : "text-zinc-500 hover:text-white"
-                      )}
-                    >
-                      {opt.name}
-                    </button>
-                  ))}
-                  {quality === "all" && (
-                    <span className="px-3 py-1.5 text-xs font-medium text-zinc-500">All</span>
-                  )}
-                </div>
-
-                {/* Sort Dropdown */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="bg-[#0A0A0A] border-white/[0.06] text-zinc-400 hover:text-white hover:border-white/10"
-                    >
-                      <SlidersHorizontal className="h-4 w-4 mr-2" />
-                      {SORT_OPTIONS.find((s) => s.value === sort)?.name}
-                      <ChevronDown className="h-4 w-4 ml-2" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="bg-[#0A0A0A] border-white/[0.06]"
-                  >
-                    {SORT_OPTIONS.map((opt) => (
-                      <DropdownMenuItem
-                        key={opt.value}
-                        onClick={() => handleSortChange(opt.value)}
-                        className={cn(
-                          "text-zinc-400 focus:text-white focus:bg-white/5 cursor-pointer",
-                          sort === opt.value && "text-rose-400 bg-rose-500/10"
-                        )}
-                      >
-                        {opt.name}
-                        {sort === opt.value && (
-                          <span className="ml-auto text-rose-400">✓</span>
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* View Toggle */}
-                <div className="flex items-center gap-1 p-1 bg-[#0A0A0A] border border-white/[0.06] rounded-lg">
-                  <button
-                    onClick={() => handleViewModeChange("grid")}
-                    className={cn(
-                      "p-2 rounded-md transition-all duration-200",
-                      viewMode === "grid"
-                        ? "bg-rose-600 text-white shadow-lg shadow-rose-600/30"
-                        : "text-zinc-500 hover:text-white"
-                    )}
-                    title="Grid view"
-                  >
-                    <Grid3X3 className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleViewModeChange("list")}
-                    className={cn(
-                      "p-2 rounded-md transition-all duration-200",
-                      viewMode === "list"
-                        ? "bg-rose-600 text-white shadow-lg shadow-rose-600/30"
-                        : "text-zinc-500 hover:text-white"
-                    )}
-                    title="List view"
-                  >
-                    <List className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Active Filters Display */}
-            <AnimatePresence>
-              {activeFilters.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-2 mt-4 flex-wrap"
+        {/* Search + Filters */}
+        <div className="space-y-4 mb-8">
+          {/* Search Row */}
+          <div className="flex flex-wrap gap-3 items-center">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[220px] max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <Input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  updateUrl({ search: e.target.value, category, quality, sort });
+                }}
+                placeholder="Search scenepacks..."
+                className="pl-11 pr-10 py-3 bg-zinc-900/50 border-white/5 text-white placeholder:text-zinc-600 focus:border-[#EF4444]/50 rounded-xl"
+              />
+              {search && (
+                <button
+                  onClick={() => {
+                    setSearch("");
+                    updateUrl({ search: "", category, quality, sort });
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
                 >
-                  <span className="text-sm text-zinc-500">Active filters:</span>
-                  {activeFilters.map((filter) => (
-                    <Badge
-                      key={filter.key}
-                      variant="secondary"
-                      className="bg-white/5 border border-white/[0.06] text-zinc-300 hover:bg-white/10 pr-1"
-                    >
-                      {filter.label}
-                      <button
-                        onClick={() => removeFilter(filter.key)}
-                        className="ml-2 p-0.5 rounded-full hover:bg-white/10 transition-colors"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                  <button
-                    onClick={clearAllFilters}
-                    className="text-sm text-rose-400 hover:text-rose-300 transition-colors"
-                  >
-                    Clear all
-                  </button>
-                </motion.div>
+                  <X className="w-4 h-4" />
+                </button>
               )}
-            </AnimatePresence>
-
-            {/* Results Count */}
-            <div className="mt-4 text-sm text-zinc-500">
-              <span className="text-white font-semibold">{total.toLocaleString()}</span> scenepacks found
             </div>
+
+            {/* Sort */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="bg-zinc-900/50 border-white/5 text-zinc-400 gap-2 rounded-xl">
+                  <SlidersHorizontal className="w-4 h-4" />
+                  <span className="hidden sm:inline">{SORTS.find((s) => s.value === sort)?.label}</span>
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="bg-zinc-900 border-white/10 rounded-xl">
+                {SORTS.map((s) => (
+                  <DropdownMenuItem
+                    key={s.value}
+                    onClick={() => {
+                      setSort(s.value);
+                      updateUrl({ search, category, quality, sort: s.value });
+                    }}
+                    className={`focus:bg-white/5 rounded-lg ${sort === s.value ? "text-[#EF4444]" : "text-zinc-400"}`}
+                  >
+                    {s.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Clear */}
+            {hasFilters && (
+              <Button
+                onClick={clearFilters}
+                variant="ghost"
+                className="text-zinc-500 hover:text-white"
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+
+          {/* Category Chips */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => {
+                  setCategory(cat);
+                  updateUrl({ search, category: cat, quality, sort });
+                }}
+                className={`px-4 py-2 text-sm font-medium rounded-full whitespace-nowrap transition-all ${
+                  category === cat
+                    ? "bg-white text-black"
+                    : "bg-zinc-900/50 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Quality Chips */}
+          <div className="flex gap-2">
+            {QUALITIES.map((q) => (
+              <button
+                key={q}
+                onClick={() => {
+                  setQuality(q);
+                  updateUrl({ search, category, quality: q, sort });
+                }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  quality === q
+                    ? "bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30"
+                    : "bg-zinc-900/50 text-zinc-500 hover:text-white border border-transparent"
+                }`}
+              >
+                {q}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Results Section */}
-        <section className="py-8 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            {isLoading ? (
-              <div
-                className={cn(
-                  viewMode === "grid"
-                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-                    : "flex flex-col gap-4"
-                )}
-              >
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <ScenepackCardSkeleton key={i} />
-                ))}
-              </div>
-            ) : scenepacks.length === 0 ? (
-              <EmptyState onClearFilters={clearAllFilters} />
-            ) : (
-              <>
-                <motion.div
-                  layout
-                  className={cn(
-                    viewMode === "grid"
-                      ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-                      : "flex flex-col gap-4"
-                  )}
-                >
-                  <AnimatePresence mode="popLayout">
-                    {scenepacks.map((scenepack, index) => (
-                      <motion.div
-                        key={scenepack.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{
-                          duration: 0.2,
-                          delay: Math.min(index * 0.02, 0.2),
-                        }}
-                      >
-                        {viewMode === "list" ? (
-                          <ListCard scenepack={scenepack} />
-                        ) : (
-                          <Link href={`/scenepack/${scenepack.id}`}>
-                            <ScenepackCard scenepack={scenepack} />
-                          </Link>
-                        )}
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
+        {/* Results Count */}
+        <div className="mb-6 flex items-center gap-2 text-sm text-zinc-500">
+          <Grid3X3 className="w-4 h-4" />
+          <span className="text-white font-medium">{total.toLocaleString()}</span> scenepacks found
+        </div>
 
-                {/* Load more trigger */}
-                <div ref={loadMoreRef} className="mt-8">
-                  {isLoadingMore && (
-                    <div
-                      className={cn(
-                        viewMode === "grid"
-                          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-                          : "flex flex-col gap-4"
-                      )}
-                    >
-                      {Array.from({ length: 4 }).map((_, i) => (
-                        <ScenepackCardSkeleton key={i} />
-                      ))}
-                    </div>
-                  )}
-
-                  {!hasMore && scenepacks.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="text-center py-8"
-                    >
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#0A0A0A] border border-white/[0.06] text-zinc-500 text-sm">
-                        <Sparkles className="w-4 h-4 text-rose-500" />
-                        You&apos;ve reached the end
-                      </div>
-                    </motion.div>
-                  )}
-                </div>
-              </>
-            )}
+        {/* Grid */}
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {[...Array(10)].map((_, i) => (
+              <PackCardSkeleton key={i} />
+            ))}
           </div>
-        </section>
+        ) : packs.length === 0 ? (
+          <div className="text-center py-24">
+            <div className="w-16 h-16 rounded-full bg-zinc-900 flex items-center justify-center mx-auto mb-4">
+              <Sparkles className="w-8 h-8 text-zinc-700" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No scenepacks found</h3>
+            <p className="text-zinc-500 mb-6">Try adjusting your filters</p>
+            <Button onClick={clearFilters} variant="outline" className="border-white/10 text-zinc-400 hover:text-white hover:bg-white/5">
+              Clear Filters
+            </Button>
+          </div>
+        ) : (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+            >
+              {packs.map((pack) => (
+                <PackCard key={pack.id} pack={pack} />
+              ))}
+            </motion.div>
+
+            {/* Load more */}
+            <div ref={loadRef} className="mt-8">
+              {loadingMore && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {[...Array(5)].map((_, i) => (
+                    <PackCardSkeleton key={i} />
+                  ))}
+                </div>
+              )}
+              {!hasMore && packs.length > 0 && (
+                <p className="text-center text-zinc-600 py-8 text-sm">You've reached the end</p>
+              )}
+            </div>
+          </>
+        )}
       </main>
 
       <Footer />
@@ -592,189 +354,20 @@ function BrowseContent() {
   );
 }
 
-// Empty State Component with CSS-only geometric illustration
-function EmptyState({ onClearFilters }: { onClearFilters: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col items-center justify-center py-20 px-4"
-    >
-      {/* CSS-only geometric illustration */}
-      <div className="relative w-40 h-40 mb-8">
-        {/* Outer circle */}
-        <div className="absolute inset-0 rounded-full border-2 border-dashed border-zinc-800 animate-[spin_20s_linear_infinite]" />
-        
-        {/* Middle square */}
-        <div className="absolute inset-4 rounded-lg border border-zinc-700 rotate-45 flex items-center justify-center">
-          <div className="w-8 h-8 bg-zinc-800 rounded-full -rotate-45" />
-        </div>
-        
-        {/* Inner elements */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-3 h-3 rounded-full bg-zinc-700" />
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 w-3 h-3 rounded-full bg-zinc-700" />
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-3 h-3 rounded-full bg-zinc-700" />
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 w-3 h-3 rounded-full bg-zinc-700" />
-        
-        {/* Corner squares */}
-        <div className="absolute top-4 left-4 w-2 h-2 bg-zinc-700 rotate-45" />
-        <div className="absolute top-4 right-4 w-2 h-2 bg-zinc-700 rotate-45" />
-        <div className="absolute bottom-4 left-4 w-2 h-2 bg-zinc-700 rotate-45" />
-        <div className="absolute bottom-4 right-4 w-2 h-2 bg-zinc-700 rotate-45" />
-      </div>
-
-      <h3 className="text-xl font-semibold text-white mb-2">No scenepacks found</h3>
-      <p className="text-zinc-500 text-center max-w-md mb-6">
-        We couldn&apos;t find any scenepacks matching your filters. Try adjusting your search or filters.
-      </p>
-      <Button
-        onClick={onClearFilters}
-        variant="outline"
-        className="border-rose-500/50 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
-      >
-        Clear all filters
-      </Button>
-    </motion.div>
-  );
-}
-
-// List Card Component
-function ListCard({ scenepack }: { scenepack: ExtendedScenepack }) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <Link href={`/scenepack/${scenepack.id}`}>
-      <motion.article
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        className={cn(
-          "group flex gap-4 p-4 rounded-lg bg-[#0A0A0A] border transition-all duration-200 cursor-pointer",
-          isHovered
-            ? "border-rose-500/30 shadow-lg shadow-rose-500/5"
-            : "border-white/[0.06]"
-        )}
-      >
-        {/* Thumbnail */}
-        <div className="relative w-48 h-28 rounded-md overflow-hidden flex-shrink-0">
-          {scenepack.thumbnailUrl ? (
-            <Image
-              src={scenepack.thumbnailUrl}
-              alt={scenepack.title}
-              fill
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
-              sizes="192px"
-            />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-zinc-900 to-zinc-800 flex items-center justify-center">
-              <span className="text-2xl font-black text-rose-600/20">ME17</span>
-            </div>
-          )}
-
-          {/* Quality Badge */}
-          {scenepack.quality && (
-            <span
-              className={cn(
-                "absolute top-2 right-2 px-2 py-0.5 text-xs font-bold rounded",
-                scenepack.quality === "4K"
-                  ? "bg-amber-500/20 text-amber-400"
-                  : scenepack.quality === "FHD"
-                  ? "bg-blue-500/20 text-blue-400"
-                  : "bg-zinc-700 text-zinc-300"
-              )}
-            >
-              {scenepack.quality}
-            </span>
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {/* Title & Category */}
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <h3
-              className={cn(
-                "font-semibold text-lg transition-colors duration-200 line-clamp-1",
-                isHovered ? "text-rose-400" : "text-white"
-              )}
-            >
-              {scenepack.title}
-            </h3>
-            <Badge
-              variant="secondary"
-              className="bg-white/5 text-zinc-400 border-0 text-xs flex-shrink-0"
-            >
-              {scenepack.category}
-            </Badge>
-          </div>
-
-          {/* Description */}
-          {scenepack.description && (
-            <p className="text-zinc-500 text-sm line-clamp-2 mb-2">
-              {scenepack.description}
-            </p>
-          )}
-
-          {/* Tags */}
-          {scenepack.tags && scenepack.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {scenepack.tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-0.5 text-xs rounded bg-white/5 text-zinc-500"
-                >
-                  {tag}
-                </span>
-              ))}
-              {scenepack.tags.length > 3 && (
-                <span className="px-2 py-0.5 text-xs rounded bg-white/5 text-zinc-500">
-                  +{scenepack.tags.length - 3}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="flex items-center gap-4 mt-auto text-sm">
-            <span className="flex items-center gap-1.5 text-zinc-500">
-              <Eye className="w-4 h-4" />
-              {scenepack.views?.toLocaleString() || 0}
-            </span>
-            <span className="flex items-center gap-1.5 text-zinc-500">
-              <Download className="w-4 h-4" />
-              {scenepack.downloads?.toLocaleString() || 0}
-            </span>
-            <span className="flex items-center gap-1.5 text-zinc-500">
-              <Heart className="w-4 h-4" />
-              {scenepack.likes?.toLocaleString() || 0}
-            </span>
-          </div>
-        </div>
-      </motion.article>
-    </Link>
-  );
-}
-
-// Main page component with Suspense
 export default function BrowsePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex flex-col bg-black">
-          <Navbar user={null} />
-          <main className="flex-1 pt-16">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <ScenepackCardSkeleton key={i} />
-                ))}
-              </div>
-            </div>
-          </main>
-          <Footer />
+    <Suspense fallback={
+      <div className="min-h-screen bg-black flex flex-col">
+        <Navbar />
+        <div className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {[...Array(10)].map((_, i) => <PackCardSkeleton key={i} />)}
+          </div>
         </div>
-      }
-    >
-      <BrowseContent />
+        <Footer />
+      </div>
+    }>
+      <BrowsePageContent />
     </Suspense>
   );
 }
