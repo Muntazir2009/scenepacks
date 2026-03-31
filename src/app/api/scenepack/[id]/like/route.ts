@@ -62,14 +62,18 @@ export async function GET(
   const userId = searchParams.get("userId");
 
   try {
-    const like = await db.like.findUnique({
-      where: userId ? {
-        userId_scenepackId: {
-          userId,
-          scenepackId: id,
+    let like: { id: string } | null = null;
+    if (userId) {
+      like = await db.like.findUnique({
+        where: {
+          userId_scenepackId: {
+            userId,
+            scenepackId: id,
+          },
         },
-      } : undefined,
-    });
+        select: { id: true },
+      });
+    }
 
     const count = await db.like.count({
       where: { scenepackId: id },

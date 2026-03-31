@@ -152,28 +152,60 @@ export async function DELETE(
 
   try {
     const session = await getServerSession(authOptions);
+    
+    // Require admin or owner to delete
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
-    // Get the scenepack first for activity logging
+    // Get the scenepack first to check ownership
     const scenepack = await db.scenepack.findUnique({
       where: { id },
-      select: { title: true },
+      select: { title: true, createdById: true, status: true },
     });
+
+    if (!scenepack) {
+      return NextResponse.json(
+        { error: "Scenepack not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if user is admin or owner
+    const isAdmin = session.user.role === "admin";
+    const isOwner = scenepack.createdById === session.user.id;
+    
+    // Owner can only delete pending packs, admin can delete any
+    if (!isAdmin && !isOwner) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      );
+    }
+    
+    if (isOwner && !isAdmin && scenepack.status !== "pending") {
+      return NextResponse.json(
+        { error: "Can only delete pending packs" },
+        { status: 403 }
+      );
+    }
 
     await db.scenepack.delete({
       where: { id },
     });
 
     // Log the deletion activity
-    if (scenepack) {
-      await db.activityLog.create({
-        data: {
-          action: "delete",
-          message: `Deleted scenepack: "${scenepack.title}"`,
-          userId: session?.user?.id || null,
-          targetId: id,
-        },
-      });
-    }
+    await db.activityLog.create({
+      data: {
+        action: "delete",
+        message: `Deleted scenepack: "${scenepack.title}"`,
+        userId: session.user.id,
+        targetId: id,
+      },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

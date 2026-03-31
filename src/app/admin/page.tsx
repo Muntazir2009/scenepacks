@@ -853,7 +853,7 @@ export default function AdminPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col bg-black">
-        <Navbar user={{ name: "Admin", email: "admin@mythiceditz17.com", role: "admin" }} />
+        <Navbar />
         <main className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-rose-500" />
@@ -867,7 +867,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-black">
-      <Navbar user={{ name: "Admin", email: "admin@mythiceditz17.com", role: "admin" }} />
+      <Navbar />
 
       <main className="flex-1 py-8">
         <div className="container mx-auto px-4">

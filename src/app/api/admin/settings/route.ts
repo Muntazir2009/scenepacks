@@ -17,7 +17,8 @@ export async function GET() {
       });
     }
     return NextResponse.json(settings);
-  } catch {
+  } catch (error) {
+    console.error("Error fetching settings:", error);
     return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
   }
 }
@@ -32,9 +33,11 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const { requireApproval, allowMegaLinks, maintenanceMode, announcementBanner } = body;
 
+    // First, ensure settings exist
     let settings = await db.platformSettings.findFirst();
 
     if (!settings) {
+      // Create new settings
       settings = await db.platformSettings.create({
         data: {
           requireApproval: requireApproval ?? true,
@@ -44,12 +47,14 @@ export async function PATCH(request: Request) {
         },
       });
     } else {
+      // Update existing settings
       const updateData: {
         requireApproval?: boolean;
         allowMegaLinks?: boolean;
         maintenanceMode?: boolean;
         announcementBanner?: string | null;
       } = {};
+      
       if (requireApproval !== undefined) updateData.requireApproval = requireApproval;
       if (allowMegaLinks !== undefined) updateData.allowMegaLinks = allowMegaLinks;
       if (maintenanceMode !== undefined) updateData.maintenanceMode = maintenanceMode;
@@ -61,21 +66,27 @@ export async function PATCH(request: Request) {
       });
     }
 
-    // Log activity
+    // Log activity for announcement changes
     if (announcementBanner !== undefined) {
-      await db.activityLog.create({
-        data: {
-          action: "settings_update",
-          message: announcementBanner
-            ? `Updated announcement banner: "${announcementBanner.substring(0, 50)}..."`
-            : "Cleared announcement banner",
-          userId: session.user?.id || null,
-        },
-      });
+      try {
+        await db.activityLog.create({
+          data: {
+            action: "settings_update",
+            message: announcementBanner
+              ? `Updated announcement banner`
+              : "Cleared announcement banner",
+            userId: session.user?.id || null,
+          },
+        });
+      } catch (logError) {
+        console.error("Failed to log activity:", logError);
+        // Don't fail the request if logging fails
+      }
     }
 
     return NextResponse.json(settings);
-  } catch {
+  } catch (error) {
+    console.error("Error updating settings:", error);
     return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
   }
 }

@@ -122,7 +122,7 @@ const successContainer = {
   visible: {
     scale: 1,
     transition: {
-      type: "spring",
+      type: "spring" as const,
       stiffness: 200,
       damping: 20,
     },
@@ -135,7 +135,7 @@ const checkmarkVariants = {
     pathLength: 1,
     opacity: 1,
     transition: {
-      pathLength: { duration: 0.5, ease: "easeOut" },
+      pathLength: { duration: 0.5, ease: "easeOut" as const },
       opacity: { duration: 0.01 },
     },
   },
@@ -152,7 +152,7 @@ const confettiVariants = {
     transition: {
       delay: i * 0.05,
       duration: 1,
-      ease: "easeOut",
+      ease: "easeOut" as const,
     },
   }),
 };
@@ -335,7 +335,7 @@ export default function UploadPage() {
   if (status === "loading") {
     return (
       <div className="min-h-screen flex flex-col bg-black">
-        <Navbar user={null} />
+        <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-[#E11D48]" />
         </div>
@@ -347,7 +347,7 @@ export default function UploadPage() {
   if (status === "unauthenticated" || !session) {
     return (
       <div className="min-h-screen flex flex-col bg-black">
-        <Navbar user={null} />
+        <Navbar />
         <main className="flex-1 flex items-center justify-center px-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -381,7 +381,7 @@ export default function UploadPage() {
   if (isSuccess) {
     return (
       <div className="min-h-screen flex flex-col bg-black">
-        <Navbar user={session.user} />
+        <Navbar />
         <main className="flex-1 flex items-center justify-center px-4 py-12">
           <motion.div
             initial="hidden"
@@ -462,7 +462,7 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-black">
-      <Navbar user={session.user} />
+      <Navbar />
 
       <main className="flex-1 py-8 md:py-12">
         <div className="container mx-auto px-4 max-w-2xl">
